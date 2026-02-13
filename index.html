@@ -4,23 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Region Coordinator</title>
-    <!-- PDF.js CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
         :root { --primary: #2c3e50; --accent: #3498db; --danger: #e74c3c; --light: #ecf0f1; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         
-        /* Sidebar Styling */
         #sidebar { width: 320px; background: #fff; border-right: 1px solid #ddd; display: flex; flex-direction: column; z-index: 2; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
         .sidebar-header { padding: 15px; background: var(--primary); color: white; }
         .sidebar-header h2 { margin: 0; font-size: 18px; }
         .sidebar-content { flex: 1; padding: 15px; overflow-y: auto; }
         
-        /* Sections */
         .step { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .step h3 { font-size: 14px; text-transform: uppercase; color: #888; margin-bottom: 10px; }
         
-        /* Inputs & Buttons */
         textarea { width: 100%; height: 100px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; resize: vertical; font-family: monospace; }
         button { padding: 8px 12px; cursor: pointer; border: none; border-radius: 4px; font-size: 13px; margin-right: 5px; margin-bottom: 5px; transition: 0.2s; }
         .btn-primary { background: var(--accent); color: white; }
@@ -29,20 +25,16 @@
         .btn-danger:hover { background: #c0392b; }
         .btn-secondary { background: #95a5a6; color: white; }
         
-        /* Current Status */
         #status-box { background: var(--light); padding: 10px; border-left: 4px solid var(--accent); margin-bottom: 10px; }
         #current-target { font-weight: bold; display: block; margin-bottom: 5px; color: var(--primary); }
         #instruction { font-size: 12px; color: #666; }
 
-        /* Main Canvas Area */
         #main { flex: 1; background: #525659; overflow: auto; display: flex; justify-content: center; padding: 40px; position: relative; }
         #canvas-wrapper { position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         
-        /* Overlays */
         .box-overlay { position: absolute; border: 2px solid rgba(231, 76, 60, 0.8); background: rgba(231, 76, 60, 0.2); pointer-events: none; }
         .box-label { position: absolute; top: -18px; left: -2px; background: var(--danger); color: white; font-size: 10px; padding: 2px 4px; }
         
-        /* Utility */
         .hidden { display: none; }
         #output { height: 120px; font-size: 11px; }
     </style>
@@ -53,13 +45,8 @@
     <div class="sidebar-header">
         <h2>PDF Region Coordinator</h2>
     </div>
-        <a href="https://mayukhroy7.github.io/Get-Box-Coordinates-from-PDF/same_thing_but_vibecoded.html" style="text-decoration: none;">
-            <button class="btn-vibe">Switch to Vibecoded Version (its better than mine 😭)</button>
-        </a>
-        <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 20px;">
         
     <div class="sidebar-content">
-        <!-- Step 1: Config -->
         <div class="step" id="step-config">
             <h3>1. Configuration</h3>
             <label style="font-size:12px;">Define Fields (One per line):</label>
@@ -71,13 +58,18 @@ Total</textarea>
             <input type="file" id="file-input" accept=".pdf" />
         </div>
 
-        <!-- Step 2: Controls -->
         <div class="step hidden" id="step-work">
             <h3>2. Mapping Controls</h3>
             
             <div id="status-box">
                 <span id="current-target">Target: None</span>
                 <span id="instruction">Instruction: ...</span>
+            </div>
+
+            <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;">
+                <button class="btn-secondary" onclick="changePage(-1)">&lt; Prev</button>
+                <span id="page-display" style="font-size:12px; font-weight:bold; margin: 0 5px;">Page 1</span>
+                <button class="btn-secondary" onclick="changePage(1)">Next &gt;</button>
             </div>
 
             <div style="display:flex; gap:5px; margin-bottom: 10px;">
@@ -90,7 +82,6 @@ Total</textarea>
             <button class="btn-secondary" onclick="resetAll()">Reset All</button>
         </div>
 
-        <!-- Step 3: Output -->
         <div class="step hidden" id="step-output">
             <h3>3. Output (JSON)</h3>
             <textarea id="output" readonly></textarea>
@@ -105,18 +96,17 @@ Total</textarea>
 </div>
 
 <script>
-    // Configuration & State
     let fields = [];
     let pdfDoc = null;
     let pageNum = 1;
+    let totalPages = 0;
     let scale = 1.2;
     let currentFieldIndex = 0;
-    let clickState = 0; // 0 = waiting for TL, 1 = waiting for BR
+    let clickState = 0;
     let startCoords = { x: 0, y: 0 };
     let collectedData = {};
     let pdfDims = { width: 0, height: 0 };
 
-    // DOM Elements
     const elements = {
         fileInput: document.getElementById('file-input'),
         fieldInput: document.getElementById('field-list-input'),
@@ -126,20 +116,18 @@ Total</textarea>
         stepOutput: document.getElementById('step-output'),
         currentTarget: document.getElementById('current-target'),
         instruction: document.getElementById('instruction'),
-        output: document.getElementById('output')
+        output: document.getElementById('output'),
+        pageDisplay: document.getElementById('page-display')
     };
 
-    // Initialize PDF.js
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    // Event Listeners
     elements.fileInput.addEventListener('change', handleFileUpload);
 
     async function handleFileUpload(e) {
         const file = e.target.files[0];
         if (!file || file.type !== 'application/pdf') return;
 
-        // Parse fields
         const rawFields = elements.fieldInput.value.trim().split('\n');
         fields = rawFields.map(f => f.trim()).filter(f => f !== "");
 
@@ -152,22 +140,24 @@ Total</textarea>
         fileReader.onload = async function() {
             const typedarray = new Uint8Array(this.result);
             pdfDoc = await pdfjsLib.getDocument(typedarray).promise;
+            totalPages = pdfDoc.numPages;
+            pageNum = 1;
             
-            // UI Transition
             elements.stepWork.classList.remove('hidden');
             elements.stepOutput.classList.remove('hidden');
             
-            await renderPage(pageNum);
+            await renderPage();
             startMapping();
         };
         fileReader.readAsArrayBuffer(file);
     }
 
-    async function renderPage(num) {
-        const page = await pdfDoc.getPage(num);
+    async function renderPage() {
+        elements.pageDisplay.innerText = `Page ${pageNum} / ${totalPages}`;
+        
+        const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: scale });
         
-        // Store unscaled dimensions for export
         const unscaledViewport = page.getViewport({ scale: 1.0 });
         pdfDims = { width: unscaledViewport.width, height: unscaledViewport.height };
 
@@ -181,10 +171,8 @@ Total</textarea>
 
         await page.render({ canvasContext: context, viewport: viewport }).promise;
 
-        // Re-attach listener
         canvas.addEventListener('mousedown', handleCanvasClick);
         
-        // Restore visual boxes if any exist for this page
         redrawBoxes();
     }
 
@@ -201,16 +189,10 @@ Total</textarea>
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
 
-        // Convert to PDF coordinates (points)
-        const pdfX = x / scale;
-        const pdfY = y / scale;
-
         if (clickState === 0) {
-            // Start (Top-Left)
-            startCoords = { screenX: x, screenY: y, pdfX: pdfX, pdfY: pdfY };
+            startCoords = { x: x, y: y };
             clickState = 1;
             
-            // Visual feedback (temporary dot)
             const dot = document.createElement('div');
             dot.id = 'temp-dot';
             dot.style.cssText = `position:absolute; left:${x}px; top:${y}px; width:6px; height:6px; background:blue; border-radius:50%; transform:translate(-50%, -50%); pointer-events:none;`;
@@ -218,27 +200,27 @@ Total</textarea>
             
             updateStatus();
         } else {
-            // End (Bottom-Right)
             document.getElementById('temp-dot')?.remove();
             
-            // Normalize coordinates (handle dragging upwards/leftwards)
-            const x0 = Math.min(startCoords.pdfX, pdfX);
-            const y0 = Math.min(startCoords.pdfY, pdfY);
-            const x1 = Math.max(startCoords.pdfX, pdfX);
-            const y1 = Math.max(startCoords.pdfY, pdfY);
+            const x0 = Math.min(startCoords.x, x);
+            const y0 = Math.min(startCoords.y, y);
+            const w = Math.abs(x - startCoords.x);
+            const h = Math.abs(y - startCoords.y);
 
-            // Store Data [x0, y0, x1, y1]
-            collectedData[fields[currentFieldIndex]] = [
-                parseFloat(x0.toFixed(2)),
-                parseFloat(y0.toFixed(2)),
-                parseFloat(x1.toFixed(2)),
-                parseFloat(y1.toFixed(2))
+            const pdfRect = [
+                parseFloat((x0 / scale).toFixed(2)),
+                parseFloat((y0 / scale).toFixed(2)),
+                parseFloat((w / scale).toFixed(2)),
+                parseFloat((h / scale).toFixed(2))
             ];
 
-            // Draw final box
-            drawBox(fields[currentFieldIndex], x0, y0, x1, y1);
+            collectedData[fields[currentFieldIndex]] = {
+                page: pageNum,
+                coords: pdfRect
+            };
 
-            // Advance
+            drawBox(fields[currentFieldIndex], x0, y0, w, h);
+
             clickState = 0;
             currentFieldIndex++;
             updateStatus();
@@ -246,13 +228,13 @@ Total</textarea>
         }
     }
 
-    function drawBox(label, x0, y0, x1, y1) {
+    function drawBox(label, x, y, w, h) {
         const box = document.createElement('div');
         box.className = 'box-overlay';
-        box.style.left = (x0 * scale) + 'px';
-        box.style.top = (y0 * scale) + 'px';
-        box.style.width = ((x1 - x0) * scale) + 'px';
-        box.style.height = ((y1 - y0) * scale) + 'px';
+        box.style.left = x + 'px';
+        box.style.top = y + 'px';
+        box.style.width = w + 'px';
+        box.style.height = h + 'px';
         
         const labelSpan = document.createElement('span');
         labelSpan.className = 'box-label';
@@ -263,13 +245,16 @@ Total</textarea>
     }
 
     function redrawBoxes() {
-        // Redraws all boxes based on current scale
-        // (Useful after zooming)
         document.querySelectorAll('.box-overlay').forEach(el => el.remove());
         Object.keys(collectedData).forEach(key => {
-            if(collectedData[key]) {
-                const [x0, y0, x1, y1] = collectedData[key];
-                drawBox(key, x0, y0, x1, y1);
+            const item = collectedData[key];
+            if(item && item.page === pageNum) {
+                const [pdfX, pdfY, pdfW, pdfH] = item.coords;
+                const x = pdfX * scale;
+                const y = pdfY * scale;
+                const w = pdfW * scale;
+                const h = pdfH * scale;
+                drawBox(key, x, y, w, h);
             }
         });
     }
@@ -294,12 +279,10 @@ Total</textarea>
 
     function undoLast() {
         if (clickState === 1) {
-            // Cancel current selection start
             clickState = 0;
             document.getElementById('temp-dot')?.remove();
             updateStatus();
         } else if (currentFieldIndex > 0) {
-            // Remove last completed box
             currentFieldIndex--;
             const key = fields[currentFieldIndex];
             delete collectedData[key];
@@ -311,7 +294,7 @@ Total</textarea>
 
     function skipField() {
         if (currentFieldIndex < fields.length) {
-            collectedData[fields[currentFieldIndex]] = null; // Mark as null
+            collectedData[fields[currentFieldIndex]] = null;
             currentFieldIndex++;
             clickState = 0;
             document.getElementById('temp-dot')?.remove();
@@ -320,11 +303,23 @@ Total</textarea>
         }
     }
 
+    async function changePage(delta) {
+        if(!pdfDoc) return;
+        const newPage = pageNum + delta;
+        if(newPage >= 1 && newPage <= totalPages) {
+            pageNum = newPage;
+            clickState = 0;
+            document.getElementById('temp-dot')?.remove();
+            await renderPage();
+            updateStatus();
+        }
+    }
+
     function changeZoom(delta) {
         if(!pdfDoc) return;
         scale += delta;
         if(scale < 0.5) scale = 0.5;
-        renderPage(pageNum);
+        renderPage();
     }
 
     function resetAll() {
@@ -340,8 +335,7 @@ Total</textarea>
 
     function updateOutput() {
         const outputObj = {
-            page_width: pdfDims.width,
-            page_height: pdfDims.height,
+            totalPages: totalPages,
             regions: collectedData
         };
         elements.output.value = JSON.stringify(outputObj, null, 2);
@@ -365,4 +359,3 @@ Total</textarea>
 </script>
 </body>
 </html>
-

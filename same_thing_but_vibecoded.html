@@ -3,32 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Region Mapper</title>
+    <title>PDF Region Mapper v2</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
             --bg-color: #f4f7f6;
             --sidebar-bg: #ffffff;
-            --primary: #6c5ce7; /* Purple */
-            --accent: #00b894;  /* Green */
-            --warning: #fdcb6e; /* Orange */
-            --danger: #d63031;  /* Red */
+            --primary: #6c5ce7;
+            --accent: #00b894;
+            --warning: #fdcb6e;
+            --danger: #d63031;
             --text-dark: #2d3436;
             --text-light: #636e72;
             --step-1: #0984e3;
-            --step-2: #6c5ce7;
-            --step-3: #00b894;
         }
 
         body { font-family: 'Segoe UI', Roboto, Helvetica, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg-color); color: var(--text-dark); overflow: hidden; }
 
-        /* --- SIDEBAR --- */
         #sidebar { width: 360px; background: var(--sidebar-bg); border-right: 1px solid #dfe6e9; display: flex; flex-direction: column; box-shadow: 4px 0 15px rgba(0,0,0,0.05); z-index: 10; }
         
-        .header { padding: 20px; background: var(--text-dark); color: white; text-align: center; }
+        .header { padding: 20px 20px 10px 20px; background: var(--text-dark); color: white; text-align: center; }
         .header h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 1px; }
-        .header p { margin: 5px 0 0; font-size: 12px; color: #b2bec3; }
+        
+        .vibecode-container { background: var(--text-dark); padding: 0 20px 20px 20px; text-align: center; }
+        .btn-vibe {
+            background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+            color: white; border: none; padding: 10px 15px; width: 100%; border-radius: 6px;
+            font-weight: bold; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3); text-decoration: none; display: inline-block;
+        }
+        .btn-vibe:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(108, 92, 231, 0.5); }
 
         .scroll-area { flex: 1; overflow-y: auto; padding: 20px; }
 
@@ -36,60 +41,44 @@
         .card-header { padding: 12px 15px; font-weight: bold; color: white; display: flex; align-items: center; justify-content: space-between; }
         .card-body { padding: 15px; }
 
-        /* Step Colors */
         .step-1 .card-header { background: var(--step-1); }
-        .step-2 .card-header { background: var(--step-2); }
-        .step-3 .card-header { background: var(--step-3); }
+        .step-2 .card-header { background: var(--primary); }
+        .step-3 .card-header { background: var(--accent); }
 
-        /* Form Elements */
         textarea { width: 100%; height: 80px; padding: 10px; border: 1px solid #dfe6e9; border-radius: 5px; font-family: monospace; font-size: 13px; resize: vertical; box-sizing: border-box; }
-        textarea:focus { outline: 2px solid var(--step-1); border-color: transparent; }
         
-        .file-upload { position: relative; display: block; width: 100%; }
+        .file-upload label { display: block; width: 100%; padding: 10px; background: #e3f2fd; color: var(--step-1); text-align: center; border-radius: 5px; cursor: pointer; border: 2px dashed var(--step-1); font-weight: 600; box-sizing: border-box; }
         .file-upload input { display: none; }
-        .file-upload label { display: block; width: 100%; padding: 10px; background: #e3f2fd; color: var(--step-1); text-align: center; border-radius: 5px; cursor: pointer; border: 2px dashed var(--step-1); font-weight: 600; transition: 0.2s; box-sizing: border-box; }
-        .file-upload label:hover { background: var(--step-1); color: white; }
 
-        /* Active Field List */
         .field-item { padding: 8px 12px; border-bottom: 1px solid #f1f1f1; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
         .field-item.active { background: #fff3cd; border-left: 4px solid var(--warning); color: #856404; font-weight: bold; }
         .field-item.done { color: var(--accent); }
-        .field-item i { margin-right: 8px; }
 
-        /* Buttons */
-        .btn-group { display: flex; gap: 5px; margin-top: 10px; }
+        .control-row { display: flex; gap: 5px; margin-top: 10px; align-items: center; justify-content: center; }
         button { flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 12px; color: white; transition: 0.2s; }
         .btn-undo { background: var(--danger); }
         .btn-skip { background: var(--text-light); }
         .btn-copy { background: var(--text-dark); margin-top: 5px; width: 100%; }
-        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        
+        .btn-nav { background: var(--primary); color: white; max-width: 40px; }
+        .page-indicator { font-size: 12px; font-weight: bold; color: var(--text-light); width: 80px; text-align: center; }
 
-        /* --- MAIN CANVAS AREA --- */
         #main { flex: 1; background: #636e72; position: relative; overflow: auto; display: flex; justify-content: center; padding: 40px; }
         
-        /* Floating Instruction Bar */
         #instruction-bar {
             position: fixed; top: 20px; left: 400px; right: 40px; 
-            background: rgba(255, 255, 255, 0.95); 
-            padding: 10px 20px; border-radius: 50px; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            display: flex; align-items: center; justify-content: center;
-            z-index: 100; font-weight: 600; color: var(--text-dark);
-            transition: all 0.3s ease;
-            backdrop-filter: blur(5px);
+            background: rgba(255, 255, 255, 0.95); padding: 10px 20px; border-radius: 50px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2); z-index: 100; font-weight: 600; color: var(--text-dark);
+            display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px);
         }
-        #instruction-icon { margin-right: 10px; font-size: 18px; }
         
         #canvas-container { position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5); background: white; cursor: crosshair; }
 
-        /* Box Overlay Styles */
         .box-overlay { position: absolute; border: 2px solid var(--primary); background: rgba(108, 92, 231, 0.2); z-index: 5; }
         .box-label { position: absolute; top: -20px; left: -2px; background: var(--primary); color: white; padding: 2px 6px; font-size: 10px; border-radius: 3px 3px 0 0; white-space: nowrap; }
         
-        /* Preview Box (Rubber banding) */
         #preview-box { position: absolute; border: 2px dashed var(--danger); background: rgba(214, 48, 49, 0.1); pointer-events: none; z-index: 10; display: none; }
 
-        /* Utilities */
         .hidden { display: none !important; }
     </style>
 </head>
@@ -98,19 +87,16 @@
 <div id="sidebar">
     <div class="header">
         <h1><i class="fas fa-bullseye"></i> PDF Mapper</h1>
-        <p>Extract Coordinates for AI/Python</p>
     </div>
 
     <div class="scroll-area">
-        <!-- STEP 1 -->
         <div class="card step-1">
             <div class="card-header">
                 <span>1. Setup</span>
                 <i class="fas fa-cog"></i>
             </div>
             <div class="card-body">
-                <label style="font-size:12px; font-weight:bold; color:var(--text-light)">Paste Field Names (one per line):</label>
-                <textarea id="field-input">Invoice Number
+                <textarea id="field-input" placeholder="Invoice Number&#10;Date&#10;Total">Invoice Number
 Date
 Total Amount
 Vendor Name</textarea>
@@ -122,28 +108,33 @@ Vendor Name</textarea>
             </div>
         </div>
 
-        <!-- STEP 2 -->
         <div class="card step-2 hidden" id="panel-mapping">
             <div class="card-header">
                 <span>2. Mapping</span>
                 <i class="fas fa-mouse-pointer"></i>
             </div>
             <div class="card-body">
+                <div class="control-row" style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                    <button class="btn-nav" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span class="page-indicator" id="page-indicator">Page 1 / ?</span>
+                    <button class="btn-nav" onclick="changePage(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+
                 <div id="field-list-display" style="max-height: 150px; overflow-y:auto; border:1px solid #eee; margin-bottom:10px;"></div>
                 
-                <div class="btn-group">
+                <div class="control-row">
                     <button class="btn-undo" onclick="undoLast()"><i class="fas fa-undo"></i> Undo</button>
                     <button class="btn-skip" onclick="skipField()">Skip <i class="fas fa-forward"></i></button>
                 </div>
-                <div style="margin-top:10px; text-align:center;">
-                    <button style="background:var(--text-light); width:30px;" onclick="adjustZoom(-0.2)">-</button>
-                    <span style="font-size:12px; margin:0 5px;">Zoom</span>
-                    <button style="background:var(--text-light); width:30px;" onclick="adjustZoom(0.2)">+</button>
+                
+                <div class="control-row">
+                    <button style="background:var(--text-light); max-width:40px;" onclick="adjustZoom(-0.2)"><i class="fas fa-search-minus"></i></button>
+                    <span style="font-size:12px; color:var(--text-light)">Zoom</span>
+                    <button style="background:var(--text-light); max-width:40px;" onclick="adjustZoom(0.2)"><i class="fas fa-search-plus"></i></button>
                 </div>
             </div>
         </div>
 
-        <!-- STEP 3 -->
         <div class="card step-3 hidden" id="panel-output">
             <div class="card-header">
                 <span>3. JSON Output</span>
@@ -159,29 +150,27 @@ Vendor Name</textarea>
 
 <div id="main">
     <div id="instruction-bar" class="hidden">
-        <i id="instruction-icon" class="fas fa-info-circle"></i>
+        <i id="instruction-icon" class="fas fa-info-circle" style="margin-right: 8px;"></i>
         <span id="instruction-text">Welcome! Upload a PDF to start.</span>
     </div>
 
     <div id="canvas-container">
-        <!-- Canvas and Boxes go here -->
         <div id="preview-box"></div>
     </div>
 </div>
 
 <script>
-    // --- STATE ---
     let pdfDoc = null;
     let pageNum = 1;
+    let totalPages = 0;
     let scale = 1.3;
     let fields = [];
     let currentFieldIndex = 0;
-    let clickState = 0; // 0 = Waiting for Start (TL), 1 = Waiting for End (BR)
+    let clickState = 0;
     let startCoords = { x: 0, y: 0 };
-    let collectedData = {};
-    let pdfPageDims = { w: 0, h: 0 };
+    
+    let collectedData = {}; 
 
-    // --- ELEMENTS ---
     const fileInput = document.getElementById('file-input');
     const container = document.getElementById('canvas-container');
     const previewBox = document.getElementById('preview-box');
@@ -190,27 +179,27 @@ Vendor Name</textarea>
     const instructionIcon = document.getElementById('instruction-icon');
     const fieldListDisplay = document.getElementById('field-list-display');
     const jsonOutput = document.getElementById('json-output');
+    const pageIndicator = document.getElementById('page-indicator');
 
-    // --- PDF LOADER ---
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        // Load fields
         const text = document.getElementById('field-input').value;
         fields = text.split('\n').map(s => s.trim()).filter(s => s);
-        
         if (fields.length === 0) { alert("Please enter at least one field name."); return; }
 
         const reader = new FileReader();
         reader.onload = async function() {
             const typedarray = new Uint8Array(this.result);
             pdfDoc = await pdfjsLib.getDocument(typedarray).promise;
+            totalPages = pdfDoc.numPages;
+            pageNum = 1;
+
             await renderPage();
             
-            // Show UI
             document.getElementById('panel-mapping').classList.remove('hidden');
             document.getElementById('panel-output').classList.remove('hidden');
             instructionBar.classList.remove('hidden');
@@ -221,33 +210,42 @@ Vendor Name</textarea>
     });
 
     async function renderPage() {
+        if (!pdfDoc) return;
+        
+        pageIndicator.innerText = `Page ${pageNum} / ${totalPages}`;
+
         const page = await pdfDoc.getPage(pageNum);
         const viewport = page.getViewport({ scale: scale });
-        const unscaled = page.getViewport({ scale: 1.0 });
-        pdfPageDims = { w: unscaled.width, h: unscaled.height };
 
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.height = viewport.height;
         canvas.width = viewport.width;
 
-        // Clear container but keep previewBox
-        container.innerHTML = ''; 
+        while (container.firstChild) {
+            if (container.firstChild.id === 'preview-box') {
+                container.firstChild.style.display = 'none';
+                container.removeChild(container.firstChild);
+            } else {
+                container.removeChild(container.firstChild);
+            }
+        }
+        
         container.appendChild(previewBox);
         container.appendChild(canvas);
 
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
-        // Re-attach listeners
         container.onmousedown = handleMouseDown;
         container.onmousemove = handleMouseMove;
-    }
 
-    // --- INTERACTION LOGIC ---
+        redrawVisualBoxes();
+    }
 
     function startMapping() {
         currentFieldIndex = 0;
         collectedData = {};
+        clickState = 0;
         updateUI();
     }
 
@@ -259,11 +257,9 @@ Vendor Name</textarea>
         const y = e.clientY - rect.top;
 
         if (clickState === 0) {
-            // First Click (Top-Left)
             startCoords = { x: x, y: y };
             clickState = 1;
             
-            // Show preview box
             previewBox.style.display = 'block';
             previewBox.style.left = x + 'px';
             previewBox.style.top = y + 'px';
@@ -272,29 +268,29 @@ Vendor Name</textarea>
             
             updateUI();
         } else {
-            // Second Click (Bottom-Right)
             clickState = 0;
             previewBox.style.display = 'none';
             
-            // Calculate coords
             const x0 = Math.min(startCoords.x, x);
             const y0 = Math.min(startCoords.y, y);
             const w = Math.abs(x - startCoords.x);
             const h = Math.abs(y - startCoords.y);
 
-            // Save PDF coordinates
-            const pdfX0 = (x0 / scale).toFixed(2);
-            const pdfY0 = (y0 / scale).toFixed(2);
-            const pdfX1 = ((x0 + w) / scale).toFixed(2);
-            const pdfY1 = ((y0 + h) / scale).toFixed(2);
+            const pdfRect = [
+                parseFloat((x0 / scale).toFixed(2)),
+                parseFloat((y0 / scale).toFixed(2)),
+                parseFloat((w / scale).toFixed(2)),
+                parseFloat((h / scale).toFixed(2))
+            ];
 
             const fieldName = fields[currentFieldIndex];
-            collectedData[fieldName] = [parseFloat(pdfX0), parseFloat(pdfY0), parseFloat(pdfX1), parseFloat(pdfY1)];
+            collectedData[fieldName] = {
+                page: pageNum,
+                coords: pdfRect 
+            };
 
-            // Draw permanent box
             createVisualBox(x0, y0, w, h, fieldName);
 
-            // Next
             currentFieldIndex++;
             updateUI();
             updateJSON();
@@ -326,7 +322,6 @@ Vendor Name</textarea>
         box.style.top = y + 'px';
         box.style.width = w + 'px';
         box.style.height = h + 'px';
-        box.id = `box-${currentFieldIndex}`;
         
         const span = document.createElement('span');
         span.className = 'box-label';
@@ -336,45 +331,38 @@ Vendor Name</textarea>
         container.appendChild(box);
     }
 
-    // --- UI HELPERS ---
+    function redrawVisualBoxes() {
+        Object.keys(collectedData).forEach(key => {
+            const item = collectedData[key];
+            if (item && item.page === pageNum) {
+                const [pdfX, pdfY, pdfW, pdfH] = item.coords;
+                
+                const screenX = pdfX * scale;
+                const screenY = pdfY * scale;
+                const screenW = pdfW * scale;
+                const screenH = pdfH * scale;
 
-    function updateUI() {
-        // 1. Update Instruction Bar
-        if (currentFieldIndex < fields.length) {
-            const name = fields[currentFieldIndex];
-            if (clickState === 0) {
-                instructionBar.style.borderLeft = "5px solid var(--primary)";
-                instructionIcon.className = "fas fa-mouse-pointer";
-                instructionIcon.style.color = "var(--primary)";
-                instructionText.innerHTML = `Target: <b style="color:var(--primary)">${name}</b>. Click the <b style="text-decoration:underline">TOP-LEFT</b> corner.`;
-            } else {
-                instructionBar.style.borderLeft = "5px solid var(--danger)";
-                instructionIcon.className = "fas fa-compress-arrows-alt";
-                instructionIcon.style.color = "var(--danger)";
-                instructionText.innerHTML = `Target: <b style="color:var(--primary)">${name}</b>. Now click the <b style="text-decoration:underline">BOTTOM-RIGHT</b> corner.`;
+                createVisualBox(screenX, screenY, screenW, screenH, key);
             }
-        } else {
-            instructionBar.style.borderLeft = "5px solid var(--accent)";
-            instructionIcon.className = "fas fa-check-circle";
-            instructionIcon.style.color = "var(--accent)";
-            instructionText.innerHTML = "All fields mapped! Copy the JSON from the sidebar.";
-        }
-
-        // 2. Update Sidebar List
-        let html = '';
-        fields.forEach((f, i) => {
-            let statusClass = '';
-            let icon = 'fa-circle';
-            if (i < currentFieldIndex) { statusClass = 'done'; icon = 'fa-check-circle'; }
-            else if (i === currentFieldIndex) { statusClass = 'active'; icon = 'fa-crosshairs'; }
-            
-            html += `<div class="field-item ${statusClass}"><span style="font-size:12px;">${i+1}. ${f}</span> <i class="fas ${icon}"></i></div>`;
         });
-        fieldListDisplay.innerHTML = html;
-        
-        // Scroll list to active
-        const activeItem = document.querySelector('.field-item.active');
-        if(activeItem) activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    async function changePage(delta) {
+        if (!pdfDoc) return;
+        const newPage = pageNum + delta;
+        if (newPage >= 1 && newPage <= totalPages) {
+            pageNum = newPage;
+            clickState = 0; 
+            previewBox.style.display = 'none';
+            await renderPage();
+            updateUI();
+        }
+    }
+
+    function adjustZoom(delta) {
+        scale += delta;
+        if (scale < 0.5) scale = 0.5;
+        renderPage(); 
     }
 
     function undoLast() {
@@ -384,10 +372,10 @@ Vendor Name</textarea>
             updateUI();
         } else if (currentFieldIndex > 0) {
             currentFieldIndex--;
-            const box = document.getElementById(`box-${currentFieldIndex}`);
-            if(box) box.remove();
+            const key = fields[currentFieldIndex];
+            delete collectedData[key];
             
-            delete collectedData[fields[currentFieldIndex]];
+            renderPage(); 
             updateUI();
             updateJSON();
         }
@@ -404,22 +392,64 @@ Vendor Name</textarea>
         }
     }
 
-    function adjustZoom(delta) {
-        scale += delta;
-        if (scale < 0.5) scale = 0.5;
-        renderPage().then(() => {
-            // Re-render boxes for new scale
-            document.querySelectorAll('.box-overlay').forEach(e => e.remove());
-            // This is a simplified re-render. Ideally, we recalculate screen coords from collectedData
-            alert("Note: Changing zoom resets the visual view. Please finish mapping or reset.");
-            startMapping(); // Simple reset for now to avoid math complexity in single file
+    function updateUI() {
+        if (currentFieldIndex < fields.length) {
+            const name = fields[currentFieldIndex];
+            if (clickState === 0) {
+                instructionBar.style.borderLeft = "5px solid var(--primary)";
+                instructionIcon.className = "fas fa-mouse-pointer";
+                instructionIcon.style.color = "var(--primary)";
+                instructionText.innerHTML = `Target: <b style="color:var(--primary)">${name}</b>. Click Top-Left.`;
+            } else {
+                instructionBar.style.borderLeft = "5px solid var(--danger)";
+                instructionIcon.className = "fas fa-compress-arrows-alt";
+                instructionIcon.style.color = "var(--danger)";
+                instructionText.innerHTML = `Target: <b style="color:var(--primary)">${name}</b>. Now Click Bottom-Right.`;
+            }
+        } else {
+            instructionBar.style.borderLeft = "5px solid var(--accent)";
+            instructionIcon.className = "fas fa-check-circle";
+            instructionIcon.style.color = "var(--accent)";
+            instructionText.innerHTML = "Mapping Complete!";
+        }
+
+        let html = '';
+        fields.forEach((f, i) => {
+            let statusClass = '';
+            let icon = 'fa-circle';
+            let pageBadge = '';
+
+            if (collectedData[f]) {
+                pageBadge = `<span style="background:#dfe6e9; padding:2px 5px; border-radius:3px; font-size:10px; margin-right:5px;">P${collectedData[f].page}</span>`;
+            }
+
+            if (i < currentFieldIndex) { statusClass = 'done'; icon = 'fa-check-circle'; }
+            else if (i === currentFieldIndex) { statusClass = 'active'; icon = 'fa-crosshairs'; }
+            
+            html += `<div class="field-item ${statusClass}">
+                        <span style="font-size:12px;">${i+1}. ${f}</span> 
+                        <div>${pageBadge}<i class="fas ${icon}"></i></div>
+                     </div>`;
         });
+        fieldListDisplay.innerHTML = html;
+        
+        const activeItem = document.querySelector('.field-item.active');
+        if(activeItem) activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function updateJSON() {
+        const orderedData = {};
+        fields.forEach(f => {
+            if (collectedData[f] !== undefined) {
+                orderedData[f] = collectedData[f];
+            }
+        });
+
         const final = {
-            metadata: { width: pdfPageDims.w, height: pdfPageDims.h },
-            fields: collectedData
+            metadata: { 
+                totalPages: totalPages,
+            },
+            regions: orderedData
         };
         jsonOutput.value = JSON.stringify(final, null, 2);
     }
@@ -428,9 +458,9 @@ Vendor Name</textarea>
         jsonOutput.select();
         document.execCommand('copy');
         const btn = document.querySelector('.btn-copy');
-        const originalText = btn.innerHTML;
+        const original = btn.innerHTML;
         btn.innerHTML = `<i class="fas fa-check"></i> Copied!`;
-        setTimeout(() => btn.innerHTML = originalText, 2000);
+        setTimeout(() => btn.innerHTML = original, 2000);
     }
 </script>
 

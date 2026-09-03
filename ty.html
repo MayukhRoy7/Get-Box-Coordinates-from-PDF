@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Coordinate Extractor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; }
+        #sidebar { width: 350px; background: #f4f4f4; border-right: 1px solid #ccc; padding: 10px; display: flex; flex-direction: column; overflow-y: auto; }
+        #main { flex: 1; overflow: auto; background: #555; display: flex; justify-content: center; padding: 20px; position: relative; }
+        #canvas-container { position: relative; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        canvas { display: block; }
+        .instruction { font-size: 14px; margin-bottom: 10px; color: #333; }
+        .current-field { font-weight: bold; color: #d32f2f; font-size: 18px; margin: 10px 0; padding: 10px; background: #fff; border: 2px solid #d32f2f; text-align: center;}
+        button { padding: 10px; cursor: pointer; background: #007bff; color: white; border: none; font-size: 14px; margin-top: 5px;}
+        button:hover { background: #0056b3; }
+        #output { width: 100%; height: 150px; margin-top: 20px; font-family: monospace; font-size: 11px; }
+        .box-overlay { position: absolute; border: 2px solid rgba(255, 0, 0, 0.7); background: rgba(255, 0, 0, 0.1); pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h3>1. Load PDF</h3>
+    <input type="file" id="file-input" accept=".pdf" />
+    
+    <h3>2. Click Corners</h3>
+    <div class="instruction">
+        Current Target:<br>
+        <div id="current-field-display" class="current-field">Upload PDF first</div>
+        Instruction: Click <b>Top-Left</b> corner.
+    </div>
+    
+    <div id="controls" style="display:none;">
+        <button onclick="undoLast()">Undo Last Box</button>
+        <button onclick="skipField()">Skip This Field</button>
+        <button onclick="generateOutput()">3. Copy Data for AI</button>
+    </div>
+
+    <textarea id="output" placeholder="Coordinates will appear here..."></textarea>
+</div>
+
+<div id="main">
+    <div id="canvas-container"></div>
+</div>
+
+<script>
+    // The list of headers you provided
+    const fields = [
+        "Student Name", "Father's Name", "Mother's Name", "House", "Date of Birth", "I.D. No", "Section", "Roll No",
+        "English PA-I (10)", "Bengali PA-I (10)", "Lower Hindi PA-I (10)", "Mathematics PA-I (10)", "Science PA-I (10)", "Social Science PA-I (10)", "General Knowledge PA-I (10)", "Computer PA-I (10)",
+        "English CA-I (10)", "Bengali CA-I (10)", "Mathematics CA-I (10)", "Science CA-I (10)", "Social Science CA-I (10)",
+        "English Half-Yearly (80)", "Bengali Half-Yearly (80)", "Lower Hindi Half-Yearly (40)", "Mathematics Half-Yearly (80)", "Science Half-Yearly (80)", "Social Science Half-Yearly (80)", "Genral Knowledge Half-Yearly (40)", "Computer Half-Yearly (40)",
+        "English Term 1 Marks (100)", "Bengali Term 1 Marks (100)", "Lower Hindi Term 1 Marks (50)", "Mathematics Term 1 Marks (100)", "Science Term 1 Marks (100)", "Social Science Term 1 Marks (100)", "General Knowledge Term 1 Marks (50)", "Computer Term 1 Marks (50)",
+        "English Term 1 Grade", "Bengali Term 1 Grade", "Lower Hindi Term 1 Grade", "Mathematics Term 1 Grade", "Science Term 1 Grade", "Social Science Term 1 Grade", "General Knowledege Term 1 Grade", "Computer Term 1 Grade", "CCA/Skill Term 1 Grade", "Art Term 1 Grade", "Physical Education Term 1 Grade", "Discipline Term 1 Grade",
+        "Total Classes (Term 1)", "Days Present (Term 1)", "Attendance % (Term 1)",
+        "English PA-II (10)", "Bengali PA-II (10)", "Lower Hindi PA-II (10)", "Mathematics PA-II (10)", "Science PA-II (10)", "Social Science PA-II (10)", "General Knowledge PA-II (10)", "Computer PA-II (10)",
+        "English CA-II (10)", "Bengali CA-II (10)", "Mathematics CA-II (10)", "Science CA-II (10)", "Social Science CA-II (10)",
+        "English Annual (80)", "Bengali Annual (80)", "Lower Hindi Annual (40)", "Mathematics Annual (80)", "Science Annual (80)", "Social Science Annual (80)", "Genral Knowledge Annual (40)", "Computer Annual (40)",
+        "English Term 2 Marks (100)", "Bengali Term 2 Marks (100)", "Lower Hindi Term 2 Marks (50)", "Mathematics Term 2 Marks (100)", "Science Term 2 Marks (100)", "Social Science Term 2 Marks (100)", "General Knowledge Term 2 Marks (50)", "Computer Term 2 Marks (50)",
+        "English Term 2 Grade", "Bengali Term 2 Grade", "Lower Hindi Term 2 Grade", "Mathematics Term 2 Grade", "Science Term 2 Grade", "Social Science Term 2 Grade", "General Knowledege Term 2 Grade", "Computer Term 2 Grade", "CCA Term 2 Grade", "Art Term 2 Grade", "Physical Education Term 2 Grade", "Discipline Term 2 Grade",
+        "Total Classes (Term 2)", "Days Present (Term 2)", "Attendance % (Term 2)"
+    ];
+
+    let pdfDoc = null;
+    let pageNum = 1;
+    let scale = 1.5; // Visual scale
+    let currentFieldIndex = 0;
+    let clickState = 0; // 0 = waiting for top-left, 1 = waiting for bottom-right
+    let startCoords = { x: 0, y: 0 };
+    let collectedData = {};
+    let pdfPageWidth = 0;
+    let pdfPageHeight = 0;
+
+    const fileInput = document.getElementById('file-input');
+    const container = document.getElementById('canvas-container');
+    const fieldDisplay = document.getElementById('current-field-display');
+    const outputArea = document.getElementById('output');
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    fileInput.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (file.type !== 'application/pdf') return;
+        
+        const fileReader = new FileReader();
+        fileReader.onload = async function() {
+            const typedarray = new Uint8Array(this.result);
+            pdfDoc = await pdfjsLib.getDocument(typedarray).promise;
+            renderPage(pageNum);
+            document.getElementById('controls').style.display = 'block';
+            updateFieldDisplay();
+        };
+        fileReader.readAsArrayBuffer(file);
+    });
+
+    async function renderPage(num) {
+        const page = await pdfDoc.getPage(num);
+        const viewport = page.getViewport({ scale: scale });
+        
+        // Save original PDF dimensions for calculation
+        const unscaledViewport = page.getViewport({ scale: 1.0 });
+        pdfPageWidth = unscaledViewport.width;
+        pdfPageHeight = unscaledViewport.height;
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        container.innerHTML = ''; // Clear previous
+        container.appendChild(canvas);
+
+        const renderContext = {
+            canvasContext: context,
+            viewport: viewport
+        };
+        await page.render(renderContext).promise;
+
+        canvas.addEventListener('mousedown', handleCanvasClick);
+    }
+
+    function handleCanvasClick(e) {
+        if (currentFieldIndex >= fields.length) return;
+
+        const rect = e.target.getBoundingClientRect();
+        // Calculate X,Y relative to the canvas
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Convert to PDF Point units
+        const pdfX = (x / scale); 
+        // PDF Y is usually from top-left in PDF.js, but standard PDF is bottom-left. 
+        // We will output Top-Left coordinate system (x, y, width, height) which is standard for python pdfplumber.
+        const pdfY = (y / scale);
+
+        if (clickState === 0) {
+            // First click (Top-Left)
+            startCoords = { screenX: x, screenY: y, pdfX: pdfX, pdfY: pdfY };
+            clickState = 1;
+            fieldDisplay.innerHTML = fields[currentFieldIndex] + "<br><span style='font-size:12px; color:blue'>Click Bottom-Right corner</span>";
+            
+            // Draw temporary dot
+            const dot = document.createElement('div');
+            dot.style.position = 'absolute';
+            dot.style.left = x + 'px';
+            dot.style.top = y + 'px';
+            dot.style.width = '4px';
+            dot.style.height = '4px';
+            dot.style.background = 'blue';
+            dot.id = 'temp-dot';
+            container.appendChild(dot);
+
+        } else {
+            // Second click (Bottom-Right)
+            const width = Math.abs(x - startCoords.screenX);
+            const height = Math.abs(y - startCoords.screenY);
+            const left = Math.min(x, startCoords.screenX);
+            const top = Math.min(y, startCoords.screenY);
+
+            // Draw visual box
+            const box = document.createElement('div');
+            box.className = 'box-overlay';
+            box.style.left = left + 'px';
+            box.style.top = top + 'px';
+            box.style.width = width + 'px';
+            box.style.height = height + 'px';
+            box.id = 'box-' + currentFieldIndex;
+            container.appendChild(box);
+
+            // Remove temp dot
+            const dot = document.getElementById('temp-dot');
+            if(dot) dot.remove();
+
+            // Save Data: [x0, y0, x1, y1]
+            const x0 = Math.min(startCoords.pdfX, pdfX);
+            const y0 = Math.min(startCoords.pdfY, pdfY);
+            const x1 = Math.max(startCoords.pdfX, pdfX);
+            const y1 = Math.max(startCoords.pdfY, pdfY);
+
+            collectedData[fields[currentFieldIndex]] = [
+                parseFloat(x0.toFixed(2)), 
+                parseFloat(y0.toFixed(2)), 
+                parseFloat(x1.toFixed(2)), 
+                parseFloat(y1.toFixed(2))
+            ];
+
+            // Move to next
+            clickState = 0;
+            currentFieldIndex++;
+            updateFieldDisplay();
+        }
+    }
+
+    function updateFieldDisplay() {
+        if (currentFieldIndex < fields.length) {
+            fieldDisplay.innerHTML = fields[currentFieldIndex] + "<br><span style='font-size:12px; color:green'>Click Top-Left corner</span>";
+        } else {
+            fieldDisplay.innerHTML = "DONE! Click 'Copy Data'";
+            fieldDisplay.style.borderColor = "green";
+            fieldDisplay.style.color = "green";
+            generateOutput();
+        }
+    }
+
+    function undoLast() {
+        if (currentFieldIndex > 0 && clickState === 0) {
+            currentFieldIndex--;
+            delete collectedData[fields[currentFieldIndex]];
+            const box = document.getElementById('box-' + currentFieldIndex);
+            if (box) box.remove();
+            updateFieldDisplay();
+        } else if (clickState === 1) {
+            // Cancel current click
+            clickState = 0;
+            const dot = document.getElementById('temp-dot');
+            if(dot) dot.remove();
+            updateFieldDisplay();
+        }
+    }
+    
+    function skipField() {
+        collectedData[fields[currentFieldIndex]] = null; // Mark as null/skipped
+        currentFieldIndex++;
+        clickState = 0;
+        const dot = document.getElementById('temp-dot');
+        if(dot) dot.remove();
+        updateFieldDisplay();
+    }
+
+    function generateOutput() {
+        let result = "PAGE_SIZE: " + pdfPageWidth + "x" + pdfPageHeight + "\n\nDATA_MAPPING:\n";
+        for (let key in collectedData) {
+            if (collectedData[key]) {
+                result += key + ": [" + collectedData[key].join(", ") + "]\n";
+            }
+        }
+        outputArea.value = result;
+        outputArea.select();
+        document.execCommand('copy');
+        alert("Data copied to clipboard! Paste it back to the AI.");
+    }
+</script>
+
+</body>
+</html>
